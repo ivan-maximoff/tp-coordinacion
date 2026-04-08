@@ -1,6 +1,6 @@
 # Trabajo Práctico - Coordinación
 
-En este repositorio se busca familiarizar a los estudiantes con los desafíos de la coordinación del trabajo y el control de la complejidad en sistemas distribuidos. Para tal fin se provee un esqueleto de un sistema de control de stock de una verdulería y un conjunto de escenarios de creciente grado de complejidad y distribución que demandaran mayor sofisticación en la comunicación de las partes involucradas.
+En este trabajo se busca familiarizar a los estudiantes con los desafíos de la coordinación del trabajo y el control de la complejidad en sistemas distribuidos. Para tal fin se provee un esqueleto de un sistema de control de stock de una verdulería y un conjunto de escenarios de creciente grado de complejidad y distribución que demandarán mayor sofisticación en la comunicación de las partes involucradas.
 
 ## Ejecución
 
@@ -41,24 +41,24 @@ Cuando se detecta el final de la ingesta de datos envía los pares (fruta, canti
 ### Aggregator
 
 Consolida los datos de las distintas instancias de Sum.
-Cuando se detecta el final de la ingesta se calcula un top parcial y se envía esa información al Joiner.
+Cuando se detecta el final de la ingesta, se calcula un top parcial y se envía esa información al Joiner.
 
 ### Joiner
 
 Recibe tops parciales de las instancias del Aggregator.
-Cuando se detecta el final de la ingesta se envía el top final hacia el gateway para ser entregado al cliente.
+Cuando se detecta el final de la ingesta, se envía el top final hacia el gateway para ser entregado al cliente.
 
 ## Limitaciones del esqueleto provisto
 
 La implementación base respeta la división de responsabilidades de los distintos controles y hace uso de la clase `Fruit Item` como un elemento opaco, sin asumir la implementación de las funciones de Suma y Comparación.
 
-No obstante tal y como se presenta no cubre los objetivos buscados. Entre sus falencias puede destactarse que:
+No obstante, esta implementación no cubre los objetivos buscados tal y como es presentada. Entre sus falencias puede destactarse que:
 
  - No se implementa la interfaz del middleware. 
  - No se dividen los flujos de datos de los clientes más allá del Gateway, por lo que no se es capaz de resolver múltiples consultas concurrentemente.
- - No se implementan mecanismos de sincornización que permitan escalar los controles Sum y Aggregator. En particular:
- 	- Las instancias de Sum se dividen el trabajo, pero solo una de ellas recibe la notificación de que la ingesta de datos ha concluído.
- 	- Las instancias de Sum realizan broadcast a todos las de Aggregator, en lugar de agrupar los datos por algún criterio  y evitar procesamiento redundante.
+ - No se implementan mecanismos de sincronización que permitan escalar los controles Sum y Aggregator. En particular:
+   - Las instancias de Sum se dividen el trabajo, pero solo una de ellas recibe la notificación de finalización en la ingesta de datos.
+   - Las instancias de Sum realizan _broadcast_ a todas las instancias de Aggregator, en lugar de agrupar los datos por algún criterio y evitar procesamiento redundante.
   - No se maneja la señal SIGTERM, con la salvedad de los clientes y el Gateway.
 
 ## Condiciones de Entrega
