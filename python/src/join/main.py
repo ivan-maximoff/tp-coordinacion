@@ -22,14 +22,42 @@ class JoinFilter:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )
+        self.global_counts = {}
+        self.eofs_received = 0
 
     def process_messsage(self, message, ack, nack):
         logging.info("Received top")
-        fruit_top = message_protocol.internal.deserialize(message)
-        self.output_queue.send(message_protocol.internal.serialize(fruit_top))
+        partial_top = message_protocol.internal.deserialize(message)
+
+        for fruit, amount in partial_top:
+            self.global_counts[fruit] = self.global_counts.get(fruit, 0) + amount
+        self.eofs_received += 1
+        logging.info(f"EOFs received: {self.eofs_received}/{AGGREGATION_AMOUNT}")
+
+        if self.eofs_received == AGGREGATION_AMOUNT:
+            self._send_final_top()
+            self.eofs_received = 0 
+            self.global_counts = {}
         ack()
 
+
+    def _send_final_top(self):
+        logging.info("Consolidating final top and sending to Gateway")
+        
+        final_list = [
+            fruit_item.FruitItem(fruit, amount) for fruit, amount in self.global_counts.items()
+        ]
+        
+        final_list.sort(reverse=True)
+        top_n = final_list[:TOP_SIZE]
+        
+        result = [(item.fruit, item.amount) for item in top_n]
+        
+        self.output_queue.send(message_protocol.internal.serialize(result))
+        logging.info("Sent final global top to Gateway")
+
     def start(self):
+        logging.info("JoinFilter: Starting consumption...")
         self.input_queue.start_consuming(self.process_messsage)
 
 
