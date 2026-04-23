@@ -1,3 +1,4 @@
+import logging
 import pika
 from pika.exceptions import AMQPConnectionError, ConnectionClosedByBroker
 from .middleware import MessageMiddlewareCloseError, MessageMiddlewareDisconnectedError, MessageMiddlewareMessageError, MessageMiddlewareQueue, MessageMiddlewareExchange
@@ -10,7 +11,7 @@ class _RabbitMQMiddleware:
             )
             self._channel = self._connection.channel()
         except AMQPConnectionError:
-            print(f"Error conectando a RabbitMQ en {host}")
+            logging.error(f"Error conectando a RabbitMQ en {host}")
             raise
 
     def close(self):
@@ -38,9 +39,15 @@ class _RabbitMQMiddleware:
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             def nack():
                 ch.basic_nack(delivery_tag=method.delivery_tag)
-            on_message_callback(body, ack, nack)
+
+            try:
+                on_message_callback(body, ack, nack)
+            except Exception:
+                logging.exception("Unhandled error in message callback")
+                nack()
 
         try:
+            self._channel.basic_qos(prefetch_count=1)
             self._channel.basic_consume(
                 queue=self.queue_name,
                 on_message_callback=internal_callback
@@ -49,7 +56,7 @@ class _RabbitMQMiddleware:
         except AMQPConnectionError:
             raise MessageMiddlewareDisconnectedError()
         except ConnectionClosedByBroker:
-            pass
+            logging.info("Connection closed by broker while consuming")
 
     def stop_consuming(self):
         try:
@@ -69,25 +76,50 @@ class MessageMiddlewareQueueRabbitMQ(_RabbitMQMiddleware, MessageMiddlewareQueue
 
 class MessageMiddlewareExchangeRabbitMQ(_RabbitMQMiddleware, MessageMiddlewareExchange):
     def __init__(self, host, exchange_name, routing_keys):
+        """
+        La lógica de inicialización deduce el comportamiento según las routing_keys:
+        1. Tipo de Exchange: 'fanout' si no hay keys (broadcast) o 'direct' si las hay (sharding).
+        2. Tipo de Cola: 
+            Si hay una sola key, se usa una cola con nombre persistente. 
+            Si no, se crea una cola anónima y exclusiva.
+        """
         _RabbitMQMiddleware.__init__(self, host)
         self.exchange_name = exchange_name
         self.routing_keys = routing_keys
 
-        self._channel.exchange_declare(
-            exchange=self.exchange_name,
-            exchange_type='direct'
+        ex_type = 'fanout' if not routing_keys else 'direct'
+        self._channel.exchange_declare(exchange=self.exchange_name, exchange_type=ex_type)
+
+        if len(routing_keys) == 1:
+            queue_name = routing_keys[0]
+            exclusive = False
+        else:
+            queue_name = ''
+            exclusive = True
+
+        self.queue_name = self.declare_queue(
+            queue_name=queue_name,
+            exclusive=exclusive,
+            auto_delete=False,
         )
 
-        result = self._channel.queue_declare(queue='', exclusive=True)
-        random_queue_name = result.method.queue
-        self.queue_name = random_queue_name
-
         for routing_key in self.routing_keys:
-            self._channel.queue_bind(
-                exchange=self.exchange_name,
-                queue=self.queue_name,
-                routing_key=routing_key
-            )
+            self.bind_queue(self.queue_name, routing_key)
+
+    def declare_queue(self, queue_name, exclusive=False, auto_delete=False):
+        result = self._channel.queue_declare(
+            queue=queue_name,
+            exclusive=exclusive,
+            auto_delete=auto_delete,
+        )
+        return result.method.queue
+
+    def bind_queue(self, queue_name, routing_key):
+        self._channel.queue_bind(
+            exchange=self.exchange_name,
+            queue=queue_name,
+            routing_key=routing_key,
+        )
 
     def send(self, message):
         routing_keys = self.routing_keys if self.routing_keys else ['']
