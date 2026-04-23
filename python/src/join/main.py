@@ -1,5 +1,6 @@
 import os
 import logging
+import signal
 
 from common import middleware, message_protocol, fruit_item
 
@@ -24,6 +25,13 @@ class JoinFilter:
         )
         self.global_counts = {}
         self.eofs_received = 0
+        signal.signal(signal.SIGTERM, self.__handle_sigterm)
+
+    def __handle_sigterm(self, _signum, _frame):
+        logging.info("SIGTERM received. Shutting down JoinFilter...")
+        self.input_queue.stop_consuming()
+        self.input_queue.close()
+        self.output_queue.close()
 
     def process_messsage(self, message, ack, nack):
         logging.info("Received top")

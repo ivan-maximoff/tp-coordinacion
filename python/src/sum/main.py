@@ -1,5 +1,6 @@
 import os
 import logging
+import signal
 import threading
 import hashlib
 
@@ -37,6 +38,17 @@ class SumFilter:
         )
         
         self.amount_by_fruit = {}
+        signal.signal(signal.SIGTERM, self.__handle_sigterm)
+
+    def __handle_sigterm(self, _signum, _frame):
+        logging.info("SIGTERM received. Shutting down SumFilter gracefully...")
+        self.input_queue.stop_consuming()
+        self.input_queue.close()
+        for ex in self.data_output_exchanges:
+            ex.close()
+        self.control_exchange.close()
+        logging.info("Connections closed. Exiting.")
+        logging.info("Graceful shutdown complete.")
 
     def _process_data(self, fruit, amount):
         logging.debug(f"Process data for ({fruit}, {amount})")
