@@ -1,20 +1,34 @@
 # Trabajo Práctico - Coordinación
 
-En este trabajo se busca familiarizar a los estudiantes con los desafíos de la coordinación del trabajo y el control de la complejidad en sistemas distribuidos. Para tal fin se provee un esqueleto de un sistema de control de stock de una verdulería y un conjunto de escenarios de creciente grado de complejidad y distribución que demandarán mayor sofisticación en la comunicación de las partes involucradas.
+## Introducción
 
-## Ejecución
+En este trabajo se busca familiarizar a los estudiantes con los desafíos de la coordinación del trabajo y el control de la complejidad en sistemas distribuidos. Para tal fin se provee un esqueleto de un sistema de control de stock de una verdulería y un conjunto de escenarios de prueba de creciente grado de complejidad, abstracción y distribución, que demandarán mayor sofisticación en la comunicación de las partes involucradas.
 
-`make up` : Inicia los contenedores del sistema y comienza a seguir los logs de todos ellos en un solo flujo de salida.
+## Condiciones de Entrega
 
-`make down`:   Detiene los contenedores y libera los recursos asociados.
+El código de este repositorio se agrupa en dos carpetas, una para Python y otra para Golang. Los estudiantes deberán elegir **sólo uno** de estos lenguajes y realizar una implementación que funcione correctamente ante cambios en la multiplicidad de los controles (archivo de docker compose), los archivos de entrada y las implementaciones de las funciones de Suma y Comparación del `FruitItem`.
 
-`make logs`: Sigue los logs de todos los contenedores en un solo flujo de salida.
+![ ](./imgs/mutabilidad.jpg  "Mutabilidad de Elementos")
+*Fig. 2: Elementos mutables e inmutables*
 
-`make test`: Inicia los contenedores del sistema, espera a que los clientes finalicen, compara los resultados con una ejecución serial y detiene los contenederes.
+A modo de referencia, en la *Figura 2* se marcan en tonos oscuros los elementos que los estudiantes no deben alterar y en tonos claros aquellos sobre los que tienen libertad de decisión.
+Al momento de la evaluación y ejecución de las pruebas se **descartarán** o **reemplazarán** :
 
-`make switch`: Permite alternar rápidamente entre los archivos de docker compose de los distintos escenarios provistos.
+- Los archivos de entrada de la carpeta `datasets`.
+- El archivo docker compose principal y los de la carpeta `scenarios`.
+- Todos los archivos Dockerfile.
+- Todo el código del cliente.
+- Todo el código del gateway, salvo `message_handler`.
+- La implementación del protocolo de comunicación externo y `FruitItem`.
 
-## Elementos del sistema objetivo
+Se proveen escenarios de prueba en la carpeta `scenarios` en conjunto con un script de validación (ver `make switch`y `make test` en la sección Ejecución). La solución final deberá contemplar la totalidad de los escenarios. El incumplimiento de las pruebas es condición de desaprobación, pero su cumplimiento no es suficiente para la aprobación. Se pide a los alumnos leer atentamente el enunciado y **tener en cuenta** los criterios de corrección informados [en el campus](https://campusgrado.fi.uba.ar/mod/page/view.php?id=73393).
+
+Redactar un breve informe en el archivo `INFORME.md` explicando la forma en que se coordinan las instancias de Sum y Aggregation, así como el modo en el que el sistema escala respecto a los clientes, grándes volúmens de datos y la cantidad de controles.
+
+La entrega consiste en el enlace al último commit que se haya enviado, por ejemplo:
+[https://github.com/7574-sistemas-distribuidos/tp-coordinacion/commit/6de10feffc3464194fc87536266f70ae1cb73fac](https://github.com/7574-sistemas-distribuidos/tp-coordinacion/commit/6de10feffc3464194fc87536266f70ae1cb73fac)
+
+## Descripción del sistema objetivo
 
 ![ ](./imgs/diagrama_de_robustez.jpg  "Diagrama de Robustez")
 *Fig. 1: Diagrama de Robustez*
@@ -57,25 +71,19 @@ No obstante, esta implementación no cubre los objetivos buscados tal y como es 
  - No se implementa la interfaz del middleware. 
  - No se dividen los flujos de datos de los clientes más allá del Gateway, por lo que no se es capaz de resolver múltiples consultas concurrentemente.
  - No se implementan mecanismos de sincronización que permitan escalar los controles Sum y Aggregator. En particular:
+   - No se puede escalar respecto a grandes volúmenes de datos transmitidos desde los clientes.
    - Las instancias de Sum se dividen el trabajo, pero solo una de ellas recibe la notificación de finalización en la ingesta de datos.
    - Las instancias de Sum realizan _broadcast_ a todas las instancias de Aggregator, en lugar de agrupar los datos por algún criterio y evitar procesamiento redundante.
   - No se maneja la señal SIGTERM, con la salvedad de los clientes y el Gateway.
 
-## Condiciones de Entrega
+## Ejecución
 
-El código de este repositorio se agrupa en dos carpetas, una para Python y otra para Golang. Los estudiantes deberán elegir **sólo uno** de estos lenguajes y realizar una implementación que funcione correctamente ante cambios en la multiplicidad de los controles (archivo de docker compose), los archivos de entrada y las implementaciones de las funciones de Suma y Comparación del `FruitItem`.
+`make up` : Inicia los contenedores del sistema y comienza a seguir los logs de todos ellos en un solo flujo de salida.
 
-![ ](./imgs/mutabilidad.jpg  "Mutabilidad de Elementos")
-*Fig. 2: Elementos mutables e inmutables*
+`make down`:   Detiene los contenedores y libera los recursos asociados.
 
-A modo de referencia, en la *Figura 2* se marcan en tonos oscuros los elementos que los estudiantes no deben alterar y en tonos claros aquellos sobre los que tienen libertad de decisión.
-Al momento de la evaluación y ejecución de las pruebas se **descartarán** o **reemplazarán** :
+`make logs`: Sigue los logs de todos los contenedores en un solo flujo de salida.
 
-- Los archivos de entrada de la carpeta `datasets`.
-- El archivo docker compose principal y los de la carpeta `scenarios`.
-- Todos los archivos Dockerfile.
-- Todo el código del cliente.
-- Todo el código del gateway, salvo `message_handler`.
-- La implementación del protocolo de comunicación externo y `FruitItem`.
+`make test`: Inicia los contenedores del sistema, espera a que los clientes finalicen, compara los resultados con una ejecución serial y detiene los contenederes.
 
-Redactar un breve informe explicando el modo en que se coordinan las instancias de Sum y Aggregation, así como el modo en el que el sistema escala respecto a los clientes y a la cantidad de controles.
+`make switch`: Permite alternar rápidamente entre los archivos de docker compose de los distintos escenarios provistos.

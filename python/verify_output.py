@@ -1,4 +1,5 @@
 import csv
+import sys
 import yaml
 import logging
 import subprocess
@@ -146,4 +147,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
