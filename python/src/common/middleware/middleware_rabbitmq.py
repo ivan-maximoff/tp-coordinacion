@@ -65,6 +65,18 @@ class _RabbitMQMiddleware:
         except Exception:
             pass
 
+    def stop_consuming_threadsafe(self):
+        """
+        Pika connections are not thread-safe: the only call allowed from a thread
+        other than the consuming one is add_callback_threadsafe, so the stop is
+        scheduled to run inside the consumer's own loop.
+        """
+        try:
+            if self._connection.is_open:
+                self._connection.add_callback_threadsafe(self.stop_consuming)
+        except Exception:
+            logging.exception("Could not schedule stop_consuming")
+
 class MessageMiddlewareQueueRabbitMQ(_RabbitMQMiddleware, MessageMiddlewareQueue):
     def __init__(self, host, queue_name):
         _RabbitMQMiddleware.__init__(self, host)
