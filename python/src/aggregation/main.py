@@ -1,9 +1,11 @@
 import os
 import logging
-import bisect
+import heapq
 import signal
 
 from common import middleware, message_protocol, fruit_item
+
+internal = message_protocol.internal
 
 ID = int(os.environ["ID"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -11,6 +13,36 @@ OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 SUM_AMOUNT = int(os.environ["SUM_AMOUNT"])
 AGGREGATION_PREFIX = os.environ["AGGREGATION_PREFIX"]
 TOP_SIZE = int(os.environ["TOP_SIZE"])
+
+
+class ClientAggregation:
+    """
+    Estado parcial de un cliente. Está completo cuando todos los Sum hicieron
+    flush y los registros que informan como procesados suman el total que envió
+    el cliente: pueden llegar registros tardíos después del último flush.
+    """
+
+    def __init__(self):
+        self.amount_by_fruit = {}
+        self.processed = 0
+        self.flushes = 0
+
+    def add_fruit(self, fruit, amount):
+        record = fruit_item.FruitItem(fruit, amount)
+        self.amount_by_fruit[fruit] = (
+            self.amount_by_fruit.get(fruit, fruit_item.FruitItem(fruit, 0)) + record
+        )
+
+    def register_eof(self, eof):
+        self.processed += eof[internal.EofField.PROCESSED]
+        if not eof[internal.EofField.LATE]:
+            self.flushes += 1
+
+    def is_complete(self, total):
+        return self.flushes == SUM_AMOUNT and self.processed == total
+
+    def top(self):
+        return heapq.nlargest(TOP_SIZE, self.amount_by_fruit.values())
 
 
 class AggregationFilter:
@@ -22,56 +54,54 @@ class AggregationFilter:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )
-        self.fruit_top = []
-        self.sums_finished = 0
+        self.aggregation_by_client = {}
         signal.signal(signal.SIGTERM, self.__handle_sigterm)
 
     def __handle_sigterm(self, _signum, _frame):
         logging.info("SIGTERM received. Shutting down AggregationFilter...")
         self.input_exchange.stop_consuming()
-        self.input_exchange.close()
-        self.output_queue.close()
 
-    def _process_data(self, fruit, amount):
-        logging.debug(f"Updating count for {fruit}")
-        for i in range(len(self.fruit_top)):
-            if self.fruit_top[i].fruit == fruit:
-                self.fruit_top[i] = self.fruit_top[i] + fruit_item.FruitItem(
-                    fruit, amount
-                )
-                return
-        bisect.insort(self.fruit_top, fruit_item.FruitItem(fruit, amount))
+    def _process_data(self, aggregation, fruits):
+        for fruit, amount in fruits:
+            aggregation.add_fruit(fruit, amount)
 
-    def _process_eof(self):
-        self.sums_finished += 1
-        logging.info(f"Received EOF from Sum ({self.sums_finished}/{SUM_AMOUNT})")
-        
-        if self.sums_finished == SUM_AMOUNT:
-            logging.info("All Sums finished. Sending partial top to Joiner.")
-            fruit_chunk = list(self.fruit_top[-TOP_SIZE:])
-            fruit_chunk.reverse()
-            fruit_top = list(
-                map(
-                    lambda fruit_item: (fruit_item.fruit, fruit_item.amount),
-                    fruit_chunk,
-                )
-            )
-            self.output_queue.send(message_protocol.internal.serialize(fruit_top))
-            self.fruit_top = []
-            self.sums_finished = 0
+    def _process_eof(self, client_id, aggregation, eof):
+        aggregation.register_eof(eof)
+        total = eof[internal.EofField.TOTAL]
+        logging.info(
+            f"EOF of client {client_id}: {aggregation.flushes}/{SUM_AMOUNT} Sums, "
+            f"{aggregation.processed}/{total} records"
+        )
+        if not aggregation.is_complete(total):
+            return
+
+        logging.info(f"Client {client_id} complete. Sending partial top to Joiner.")
+        fruit_top = [[item.fruit, item.amount] for item in aggregation.top()]
+        self.output_queue.send(
+            internal.serialize_message(client_id, internal.MsgType.DATA, fruit_top)
+        )
+        del self.aggregation_by_client[client_id]
 
     def process_messsage(self, message, ack, nack):
-        fields = message_protocol.internal.deserialize(message)
-        logging.debug(f"Received fields: {fields}")
-        if len(fields) == 2:
-            self._process_data(*fields)
+        fields = internal.deserialize(message)
+        client_id = fields[internal.CLIENT_ID]
+        aggregation = self.aggregation_by_client.setdefault(
+            client_id, ClientAggregation()
+        )
+        if fields[internal.TYPE] == internal.MsgType.DATA:
+            self._process_data(aggregation, fields[internal.PAYLOAD])
         else:
-            self._process_eof()
+            self._process_eof(client_id, aggregation, fields[internal.PAYLOAD])
         ack()
 
     def start(self):
         logging.info("AggregationFilter: Starting consumption...")
-        self.input_exchange.start_consuming(self.process_messsage)
+        try:
+            self.input_exchange.start_consuming(self.process_messsage)
+        finally:
+            self.input_exchange.close()
+            self.output_queue.close()
+            logging.info("Graceful shutdown complete.")
 
 
 def main():
