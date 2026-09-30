@@ -8,8 +8,8 @@ internal = message_protocol.internal
 class MessageHandler:
 
     def __init__(self):
-        # The gateway copies this handler to other processes, so the id is set
-        # here to make every copy share it.
+        # El gateway copia este handler a otros procesos, por eso el id se
+        # genera aca (asi todas las copias comparten el mismo)
         self.client_id = str(uuid.uuid4())
         self.records_sent = 0
 

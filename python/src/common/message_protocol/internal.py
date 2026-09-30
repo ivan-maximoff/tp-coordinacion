@@ -11,7 +11,7 @@ class MsgType:
 
 
 class EofField:
-    """Payload keys of the EOF a Sum sends to every Aggregation."""
+    """Claves del payload del EOF que cada Sum envía a todos los Aggregation."""
 
     PROCESSED = "processed"
     TOTAL = "total"
@@ -27,5 +27,5 @@ def deserialize(message):
 
 
 def serialize_message(client_id, msg_type, payload):
-    """Serializes an internal message tagged with the client it belongs to."""
+    """Serializa un mensaje interno etiquetado con el cliente al que pertenece."""
     return serialize({CLIENT_ID: client_id, TYPE: msg_type, PAYLOAD: payload})

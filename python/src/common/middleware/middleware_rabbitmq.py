@@ -67,9 +67,9 @@ class _RabbitMQMiddleware:
 
     def stop_consuming_threadsafe(self):
         """
-        Pika connections are not thread-safe: the only call allowed from a thread
-        other than the consuming one is add_callback_threadsafe, so the stop is
-        scheduled to run inside the consumer's own loop.
+        Las conexiones de Pika no son thread-safe: la unica llamada permitida desde
+        otro hilo es add_callback_threadsafe, así que el stop se agenda para que
+        corra dentro del loop del propio consumidor.
         """
         try:
             if self._connection.is_open:
